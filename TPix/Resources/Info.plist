@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>TPix</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.tpix.app</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>TPix</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>TPix 需要辅助功能权限以进行窗口截图和操作</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>TPix 需要访问桌面以保存截图</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>TPix 需要访问文档以保存截图</string>
+	<key>NSMoviesFolderUsageDescription</key>
+	<string>TPix 需要访问影片文件夹以保存录屏</string>
+	<key>NSPicturesFolderUsageDescription</key>
+	<string>TPix 需要访问图片文件夹以保存截图</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSScreenCaptureDescription</key>
+	<string>TPix 需要屏幕录制权限以进行截图和录屏</string>
+</dict>
+</plist>

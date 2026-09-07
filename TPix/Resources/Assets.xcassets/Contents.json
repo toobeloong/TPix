@@ -1,0 +1,13 @@
+{
+  "assets" : [
+    {
+      "filename" : "AppIcon.appiconset",
+      "idiom" : "universal",
+      "universal-type-identifier" : "com.apple.appicon"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
