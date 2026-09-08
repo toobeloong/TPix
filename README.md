@@ -195,4 +195,4 @@ Retina 屏上逻辑点与物理像素的转换通过 `NSScreen.main.backingScale
 
 ## 许可证
 
-私有项目，未开源。
+MIT License
