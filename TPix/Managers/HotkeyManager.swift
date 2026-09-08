@@ -22,15 +22,6 @@ struct HotkeyCombo: Codable, Equatable, Hashable {
         parts.append(KeyFormatter.string(for: keyCode))
         return parts.joined()
     }
-
-    static let areaCapture = HotkeyCombo(keyCode: UInt32(kVK_ANSI_1), modifiers: UInt32(cmdKey | shiftKey))
-    static let fullScreen = HotkeyCombo(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(cmdKey | shiftKey))
-    static let delay = HotkeyCombo(keyCode: UInt32(kVK_ANSI_4), modifiers: UInt32(cmdKey | shiftKey))
-    static let scroll = HotkeyCombo(keyCode: UInt32(kVK_ANSI_5), modifiers: UInt32(cmdKey | shiftKey))
-    static let record = HotkeyCombo(keyCode: UInt32(kVK_ANSI_6), modifiers: UInt32(cmdKey | shiftKey))
-    static let pin = HotkeyCombo(keyCode: UInt32(kVK_ANSI_7), modifiers: UInt32(cmdKey | shiftKey))
-    static let colorPicker = HotkeyCombo(keyCode: UInt32(kVK_ANSI_8), modifiers: UInt32(cmdKey | shiftKey))
-    static let ocr = HotkeyCombo(keyCode: UInt32(kVK_ANSI_9), modifiers: UInt32(cmdKey | shiftKey))
 }
 
 enum KeyFormatter {
@@ -81,7 +72,7 @@ enum KeyFormatter {
 }
 
 enum HotkeyID: Int {
-    case areaCapture = 1, fullScreenCapture, delayCapture, scrollCapture, recordScreen, pinImage, colorPicker, ocr, windowUnderCursor, repeatLastCapture
+    case areaCapture = 1, recordScreen, ocr
 }
 
 final class HotkeyManager {
@@ -96,15 +87,8 @@ final class HotkeyManager {
     func registerAll() {
         let s = SettingsStore.shared
         register(.areaCapture, combo: s.settings.areaCaptureHotkey) { CaptureCoordinator.shared.startAreaCapture() }
-        register(.fullScreenCapture, combo: s.settings.fullScreenHotkey) { CaptureCoordinator.shared.startFullScreenCapture() }
-        register(.delayCapture, combo: s.settings.delayCaptureHotkey) { CaptureCoordinator.shared.startDelayCapture() }
-        register(.scrollCapture, combo: s.settings.scrollCaptureHotkey) { CaptureCoordinator.shared.startScrollCapture() }
         register(.recordScreen, combo: s.settings.recordHotkey) { CaptureCoordinator.shared.toggleRecording() }
-        register(.pinImage, combo: s.settings.pinHotkey) { CaptureCoordinator.shared.startPinFromClipboard() }
-        register(.colorPicker, combo: s.settings.colorPickerHotkey) { CaptureCoordinator.shared.startColorPicker() }
         register(.ocr, combo: s.settings.ocrHotkey) { CaptureCoordinator.shared.startOCR() }
-        register(.windowUnderCursor, combo: s.settings.windowUnderCursorHotkey) { CaptureCoordinator.shared.captureWindowUnderCursor() }
-        register(.repeatLastCapture, combo: s.settings.repeatLastCaptureHotkey) { CaptureCoordinator.shared.repeatLastCapture() }
     }
 
     func register(_ id: HotkeyID, combo: HotkeyCombo, handler: @escaping () -> Void) {

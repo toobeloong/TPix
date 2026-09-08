@@ -6,6 +6,7 @@ struct FocusableTextEditor: NSViewRepresentable {
     var onCommit: () -> Void
     var fontColor: NSColor
     var fontSize: CGFloat
+    var bgColor: NSColor
     var onSizeChange: ((CGSize) -> Void)?
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -21,13 +22,13 @@ struct FocusableTextEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.font = NSFont.systemFont(ofSize: fontSize)
         textView.textColor = fontColor
-        textView.backgroundColor = NSColor.black.withAlphaComponent(0.8)
+        textView.backgroundColor = bgColor
         textView.isEditable = true
         textView.isSelectable = true
         textView.drawsBackground = true
         textView.isRichText = false
         textView.alignment = .left
-        textView.textContainerInset = NSSize(width: 0, height: 0)
+        textView.textContainerInset = NSSize(width: 4, height: 2)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.size = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -45,12 +46,15 @@ struct FocusableTextEditor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         let textView = nsView.documentView as! AutoSizingTextView
-        // Only update text if it changed externally (not from user typing)
-        if textView.string != text && !context.coordinator.isEditing {
+        // Only update text if it changed externally (not from user typing or IME)
+        // hasMarkedText() returns true when IME has uncommitted candidate text
+        if textView.string != text && !context.coordinator.isEditing && !textView.hasMarkedText() {
             textView.string = text
         }
         textView.textColor = fontColor
         textView.font = NSFont.systemFont(ofSize: fontSize)
+        textView.backgroundColor = bgColor
+        textView.textContainerInset = NSSize(width: 4, height: 2)
         context.coordinator.onSizeChange = onSizeChange
 
         if textView.window != nil && !context.coordinator.didFocus {
@@ -64,7 +68,7 @@ struct FocusableTextEditor: NSViewRepresentable {
         DispatchQueue.main.async {
             textView.invalidateIntrinsicContentSize()
             let size = textView.intrinsicContentSize
-            context.coordinator.onSizeChange?(CGSize(width: size.width + 4, height: size.height + 4))
+            context.coordinator.onSizeChange?(CGSize(width: size.width + 8, height: size.height + 4))
         }
     }
 
@@ -86,11 +90,14 @@ struct FocusableTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             isEditing = true
+            // Don't sync to parent during IME marked text input
+            // to avoid SwiftUI re-render interrupting the input
+            if textView.hasMarkedText() { return }
             parent.text = textView.string
             if let tv = textView as? AutoSizingTextView {
                 tv.invalidateIntrinsicContentSize()
                 let size = tv.intrinsicContentSize
-                onSizeChange?(CGSize(width: size.width + 4, height: size.height + 4))
+                onSizeChange?(CGSize(width: size.width + 8, height: size.height + 4))
             }
         }
 

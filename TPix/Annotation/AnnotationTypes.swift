@@ -54,8 +54,10 @@ struct AnnotationShape: Identifiable {
     var opacity: Double
     var arrowStyle: ArrowStyle
     var mosaicStyle: MosaicStyle
+    var textBgColor: Color
+    var textBgOpacity: Double
 
-    init(tool: AnnotationTool, points: [CGPoint], color: Color, lineWidth: CGFloat, text: String = "", number: Int = 0, fontSize: CGFloat = 16, opacity: Double = 1.0, arrowStyle: ArrowStyle = .solid, mosaicStyle: MosaicStyle = .pixelate) {
+    init(tool: AnnotationTool, points: [CGPoint], color: Color, lineWidth: CGFloat, text: String = "", number: Int = 0, fontSize: CGFloat = 16, opacity: Double = 1.0, arrowStyle: ArrowStyle = .solid, mosaicStyle: MosaicStyle = .pixelate, textBgColor: Color = .black, textBgOpacity: Double = 0.8) {
         self.tool = tool
         self.points = points
         self.color = color
@@ -66,6 +68,8 @@ struct AnnotationShape: Identifiable {
         self.opacity = opacity
         self.arrowStyle = arrowStyle
         self.mosaicStyle = mosaicStyle
+        self.textBgColor = textBgColor
+        self.textBgOpacity = textBgOpacity
     }
 
     func textBoundingBox() -> CGRect? {
@@ -74,7 +78,8 @@ struct AnnotationShape: Identifiable {
             .font: NSFont.systemFont(ofSize: fontSize),
         ]
         let size = (text as NSString).size(withAttributes: attrs)
-        // SwiftUI view coords: Y axis down, p is top-left of text, text extends right and down (Y increases)
-        return CGRect(x: p.x, y: p.y, width: size.width, height: size.height)
+        let insetX: CGFloat = 4
+        let insetY: CGFloat = 2
+        return CGRect(x: p.x, y: p.y, width: size.width + insetX * 2, height: size.height + insetY * 2)
     }
 }

@@ -48,6 +48,8 @@ struct CaptureOverlayView: View {
     @State private var toolColors: [AnnotationTool: Color] = [:]
     @State private var toolLineWidths: [AnnotationTool: CGFloat] = [:]
     @State private var toolFontSizes: [AnnotationTool: CGFloat] = [:]
+    @State private var textBgColors: [AnnotationTool: Color] = [:]
+    @State private var textBgOpacity: Double = 0.8
     @State private var arrowStyle: ArrowStyle = .solid
     @State private var mosaicStyle: MosaicStyle = .pixelate
     @State private var mosaicImageCache: [UUID: NSImage] = [:]
@@ -79,6 +81,9 @@ struct CaptureOverlayView: View {
     private var currentFontSize: CGFloat {
         get { toolFontSizes[currentTool] ?? 16 }
     }
+    private var currentTextBgColor: Color {
+        get { textBgColors[currentTool] ?? .black }
+    }
 
     private func defaultColorForTool(_ tool: AnnotationTool) -> Color {
         switch tool {
@@ -105,6 +110,12 @@ struct CaptureOverlayView: View {
     }
     private func setFontSize(_ s: CGFloat) {
         toolFontSizes[currentTool] = s
+    }
+    private func setTextBgColor(_ c: Color) {
+        textBgColors[currentTool] = c
+    }
+    private func setTextBgOpacity(_ v: Double) {
+        textBgOpacity = v
     }
 
     enum SelectionDragMode {
@@ -171,13 +182,13 @@ struct CaptureOverlayView: View {
                     },
                     fontColor: NSColor(currentColor),
                     fontSize: currentFontSize,
+                    bgColor: currentTextBgColor == .clear ? NSColor.clear : NSColor(currentTextBgColor).withAlphaComponent(textBgOpacity),
                     onSizeChange: { size in
                         textInputSize = size
                     }
                 )
                 .frame(width: max(40, textInputSize.width), height: max(20, textInputSize.height), alignment: .topLeading)
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(.white.opacity(0.6), lineWidth: 1))
+                .overlay(Rectangle().stroke(.white.opacity(0.6), lineWidth: 1))
                 .position(x: pos.x + selectionRect.minX + max(40, textInputSize.width) / 2,
                           y: pos.y + selectionRect.minY + max(20, textInputSize.height) / 2)
                 .zIndex(50)
@@ -573,12 +584,20 @@ struct CaptureOverlayView: View {
                 height: r.height
             )
         }
-        // CGImage coordinate is top-left origin, need to flip Y
+        // CGImage uses physical pixels; NSImage.size is logical points.
+        // Calculate scale to convert logical coords to physical pixel coords.
+        let pixelWidth = cgImage.width
+        let pixelHeight = cgImage.height
+        let logicalWidth = img.size.width
+        let logicalHeight = img.size.height
+        let scaleX = CGFloat(pixelWidth) / logicalWidth
+        let scaleY = CGFloat(pixelHeight) / logicalHeight
+        // CGImage coordinate is top-left origin, need to flip Y (in pixel space)
         let imgRect = CGRect(
-            x: screenRect.minX,
-            y: img.size.height - screenRect.maxY,
-            width: screenRect.width,
-            height: screenRect.height
+            x: screenRect.minX * scaleX,
+            y: (logicalHeight - screenRect.maxY) * scaleY,
+            width: screenRect.width * scaleX,
+            height: screenRect.height * scaleY
         )
         guard imgRect.width > 1 && imgRect.height > 1,
               let cropped = cgImage.cropping(to: imgRect) else { return nil }
@@ -783,6 +802,8 @@ struct CaptureOverlayView: View {
                 shapes[idx].points = [pos]
                 shapes[idx].color = currentColor
                 shapes[idx].fontSize = currentFontSize
+                shapes[idx].textBgColor = currentTextBgColor
+                shapes[idx].textBgOpacity = textBgOpacity
             } else {
                 shapes.append(AnnotationShape(
                     tool: .text,
@@ -791,7 +812,9 @@ struct CaptureOverlayView: View {
                     lineWidth: currentLineWidth,
                     text: textInput,
                     number: 0,
-                    fontSize: currentFontSize
+                    fontSize: currentFontSize,
+                    textBgColor: currentTextBgColor,
+                    textBgOpacity: textBgOpacity
                 ))
             }
         } else if let editId = editingTextShapeId {
@@ -801,12 +824,15 @@ struct CaptureOverlayView: View {
         showTextInput = false
         textPosition = nil
         editingTextShapeId = nil
+        textInputSize = CGSize(width: 60, height: 28)
     }
 
     private func startEditText(_ shape: AnnotationShape) {
         editingTextShapeId = shape.id
         textInput = shape.text
         textPosition = shape.points.first
+        textBgColors[.text] = shape.textBgColor
+        textBgOpacity = shape.textBgOpacity
         showTextInput = true
         hoveredTextShapeId = nil
     }
@@ -949,9 +975,11 @@ struct CaptureOverlayView: View {
 
             Divider().frame(height: 16)
 
-            // Color picker
-            ForEach([Color.red, .orange, .yellow, .green, .blue, .purple, .white, .black], id: \.self) { c in
-                colorButton(c)
+            // Color picker (not for eraser)
+            if currentTool != .eraser {
+                ForEach([Color.red, .orange, .yellow, .green, .blue, .purple, .white, .black], id: \.self) { c in
+                    colorButton(c)
+                }
             }
 
             // Tool-specific controls
@@ -970,6 +998,27 @@ struct CaptureOverlayView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.white)
                         .frame(width: 24)
+                }
+
+                Divider().frame(height: 16)
+                HStack(spacing: 2) {
+                    Text("背景")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.6))
+                    ForEach([Color.clear, .black, .white, .yellow, .red, .blue, .green], id: \.self) { c in
+                        textBgColorButton(c)
+                    }
+                    if currentTextBgColor != .clear {
+                        Slider(value: Binding(
+                            get: { textBgOpacity },
+                            set: { setTextBgOpacity($0) }
+                        ), in: 0.1...1.0, step: 0.1)
+                        .frame(width: 60)
+                        Text("\(Int(textBgOpacity * 100))%")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white)
+                            .frame(width: 32)
+                    }
                 }
             } else if currentTool != .eraser && currentTool != .number && currentTool != .mosaic {
                 Divider().frame(height: 16)
@@ -1065,6 +1114,34 @@ struct CaptureOverlayView: View {
             .padding(6)
             .contentShape(Circle().inset(by: -6))
             .onTapGesture { setColor(c) }
+    }
+
+    private func textBgColorButton(_ c: Color) -> some View {
+        let isSelected = currentTextBgColor == c
+        return Group {
+            if c == .clear {
+                Circle()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        Image(systemName: "slash.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white)
+                    )
+            } else {
+                Circle()
+                    .fill(c)
+                    .frame(width: 18, height: 18)
+            }
+        }
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.white : Color.gray.opacity(0.4), lineWidth: isSelected ? 2 : 1)
+                .frame(width: 22, height: 22)
+        )
+        .padding(4)
+        .contentShape(Circle().inset(by: -4))
+        .onTapGesture { setTextBgColor(c) }
     }
 
     private func iconButton(_ icon: String, color: Color = .primary, action: @escaping () -> Void) -> some View {
@@ -1302,10 +1379,8 @@ struct CaptureOverlayView: View {
     private var hintText: String {
         switch mode {
         case .area: return "拖动选择截图区域，或单击吸附窗口"
-        case .scroll: return "拖动选择滚动截图区域"
         case .record: return "拖动选择录屏区域"
         case .ocr: return "拖动选择 OCR 识别区域"
-        case .window: return "拖动选择截图区域，或单击吸附窗口"
         }
     }
 
@@ -1700,13 +1775,25 @@ struct CaptureOverlayView: View {
             ctx.stroke(path, with: .color(color.opacity(0.3)), lineWidth: shape.lineWidth * 3)
         case .text:
             guard let p = shape.points.first else { return }
-            ctx.draw(Text(shape.text).font(.system(size: shape.fontSize)).foregroundColor(color), at: p, anchor: .topLeading)
+            let textStr = Text(shape.text).font(.system(size: shape.fontSize)).foregroundColor(color)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: shape.fontSize),
+            ]
+            let textSize = (shape.text as NSString).size(withAttributes: attrs)
+            let insetX: CGFloat = 4
+            let insetY: CGFloat = 2
+            let bgRect = CGRect(x: p.x, y: p.y, width: textSize.width + insetX * 2, height: textSize.height + insetY * 2)
+            if shape.textBgColor != .clear {
+                ctx.fill(Path(bgRect), with: .color(shape.textBgColor.opacity(shape.textBgOpacity)))
+            }
+            ctx.draw(textStr, at: CGPoint(x: p.x + insetX, y: p.y + insetY), anchor: .topLeading)
         case .mosaic:
             guard shape.points.count >= 2 else { return }
             let r = rectFrom(shape.points)
             if let mosaicImg = getMosaicImage(for: shape),
-               let cgImg = mosaicImg.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                let img = Image(decorative: cgImg, scale: 1.0)
+                let cgImg = mosaicImg.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                let scale = mosaicImg.size.width > 0 ? CGFloat(cgImg.width) / mosaicImg.size.width : 1.0
+                let img = Image(decorative: cgImg, scale: scale)
                 ctx.draw(img, in: r)
             } else {
                 ctx.fill(Path(r), with: .color(Color.gray.opacity(0.3)))
@@ -1805,8 +1892,19 @@ struct CaptureOverlayView: View {
                 .font: NSFont.systemFont(ofSize: shape.fontSize),
                 .foregroundColor: nsColor,
             ]
+            let textSize = (shape.text as NSString).size(withAttributes: attrs)
+            let insetX: CGFloat = 4
+            let insetY: CGFloat = 2
             let flippedPoint = CGPoint(x: p.x, y: size.height - p.y)
-            (shape.text as NSString).draw(at: flippedPoint, withAttributes: attrs)
+            let bgRect = CGRect(x: flippedPoint.x, y: flippedPoint.y - insetY * 2, width: textSize.width + insetX * 2, height: textSize.height + insetY * 2)
+            if shape.textBgColor != .clear {
+                ctx.saveGState()
+                ctx.setFillColor(NSColor(shape.textBgColor).withAlphaComponent(shape.textBgOpacity).cgColor)
+                ctx.fill(bgRect)
+                ctx.restoreGState()
+            }
+            let textPoint = CGPoint(x: flippedPoint.x + insetX, y: flippedPoint.y - insetY)
+            (shape.text as NSString).draw(at: textPoint, withAttributes: attrs)
         case .mosaic:
             guard shape.points.count >= 2 else { return }
             let r = rectFrom(shape.points)

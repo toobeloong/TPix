@@ -24,7 +24,6 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // 左侧导航栏
             VStack(spacing: 8) {
                 ForEach(SettingsTab.allCases, id: \.self) { tab in
                     NavigationButton(tab: tab, selected: selectedTab == tab) {
@@ -49,7 +48,6 @@ struct SettingsView: View {
             
             Divider()
             
-            // 右侧内容区
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 28) {
                     switch selectedTab {
@@ -230,64 +228,6 @@ struct SettingsView: View {
                     isOn: $store.settings.showCrosshair
                 )
             }
-            
-            SectionHeader(title: "延时设置", icon: "timer")
-            ModernCard {
-                HStack {
-                    Text("延时秒数")
-                        .foregroundColor(.primary)
-                        .frame(width: 100, alignment: .leading)
-                    Spacer()
-                    Stepper("", value: $store.settings.delaySeconds, in: 1...10)
-                        .labelsHidden()
-                        .tint(.accentColor)
-                    HStack(spacing: 4) {
-                        Text("\(store.settings.delaySeconds)")
-                            .font(.system(size: 16, weight: .semibold))
-                            .monospacedDigit()
-                        Text("秒")
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(width: 70, alignment: .trailing)
-                }
-            }
-            
-            SectionHeader(title: "画笔设置", icon: "pencil.tip")
-            ModernCard {
-                HStack {
-                    Text("默认画笔颜色")
-                        .foregroundColor(.primary)
-                        .frame(width: 120, alignment: .leading)
-                    Spacer()
-                    ColorPicker("", selection: Binding(
-                        get: { Color(hex: store.settings.defaultPencilColor) },
-                        set: { store.settings.defaultPencilColor = $0.toHexString() }
-                    ))
-                    .labelsHidden()
-                    .scaleEffect(1.2)
-                }
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
-                HStack {
-                    Text("默认画笔宽度")
-                        .foregroundColor(.primary)
-                        .frame(width: 120, alignment: .leading)
-                    Spacer()
-                    Slider(value: $store.settings.defaultPencilWidth, in: 1...10, step: 1)
-                        .frame(width: 180)
-                        .tint(.accentColor)
-                    HStack(spacing: 4) {
-                        Text("\(Int(store.settings.defaultPencilWidth))")
-                            .font(.system(size: 16, weight: .semibold))
-                            .monospacedDigit()
-                        Text("px")
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(width: 50, alignment: .trailing)
-                }
-            }
         }
         .onChange(of: store.settings) { _, _ in store.save() }
     }
@@ -338,14 +278,7 @@ struct SettingsView: View {
     private var hotkeyItems: [(title: String, combo: Binding<HotkeyCombo>)] {
         [
             ("区域截图", $store.settings.areaCaptureHotkey),
-            ("全屏截图", $store.settings.fullScreenHotkey),
-            ("延时截图", $store.settings.delayCaptureHotkey),
-            ("光标下窗口截图", $store.settings.windowUnderCursorHotkey),
-            ("重复上次截图", $store.settings.repeatLastCaptureHotkey),
-            ("长截图", $store.settings.scrollCaptureHotkey),
             ("录屏", $store.settings.recordHotkey),
-            ("贴图", $store.settings.pinHotkey),
-            ("取色器", $store.settings.colorPickerHotkey),
             ("OCR", $store.settings.ocrHotkey)
         ]
     }
@@ -365,14 +298,9 @@ struct SettingsView: View {
     }
     
     private func resetHotkeys() {
-        store.settings.areaCaptureHotkey = HotkeyCombo(keyCode: 18, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.fullScreenHotkey = HotkeyCombo(keyCode: 19, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.delayCaptureHotkey = HotkeyCombo(keyCode: 21, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.scrollCaptureHotkey = HotkeyCombo(keyCode: 22, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.recordHotkey = HotkeyCombo(keyCode: 23, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.pinHotkey = HotkeyCombo(keyCode: 24, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.colorPickerHotkey = HotkeyCombo(keyCode: 25, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
-        store.settings.ocrHotkey = HotkeyCombo(keyCode: 26, modifiers: UInt32(cmdKey) | UInt32(shiftKey))
+        store.settings.areaCaptureHotkey = .none
+        store.settings.recordHotkey = .none
+        store.settings.ocrHotkey = .none
         store.save()
         HotkeyManager.shared.unregisterAll()
         HotkeyManager.shared.registerAll()
@@ -381,7 +309,7 @@ struct SettingsView: View {
     
     private func checkConflict() {
         let combos = hotkeyItems.map { $0.combo.wrappedValue }
-        let duplicates = Dictionary(grouping: combos.filter { $0.keyCode != 0 }, by: { $0 })
+        let duplicates = Dictionary(grouping: combos.filter { !$0.isEmpty }, by: { $0 })
             .filter { $1.count > 1 }
         if let dup = duplicates.first {
             conflictMessage = "快捷键冲突：\(dup.key.displayString) 被多次使用"

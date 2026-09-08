@@ -3,8 +3,6 @@ import SwiftUI
 
 enum CaptureMode {
     case area
-    case window
-    case scroll
     case record
     case ocr
 }
@@ -27,11 +25,10 @@ final class CaptureOverlayController: NSWindowController {
     init(mode: CaptureMode) {
         self.mode = mode
         let screen = NSScreen.main ?? NSScreen.screens.first!
-        // Use screen's frame in points (not pixels)
         let screenFrame = screen.frame
-        
+
         NSLog("[TPix] screen.frame=\(screenFrame), screen.backingScaleFactor=\(screen.backingScaleFactor)")
-        
+
         let win = CaptureOverlayWindow(
             contentRect: screenFrame,
             styleMask: [.borderless],
@@ -58,13 +55,11 @@ final class CaptureOverlayController: NSWindowController {
     func show() {
         NSLog("[TPix] CaptureOverlayController.show() 开始")
 
-        // Use screen's visible frame in points (top-left origin for SwiftUI)
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.frame
-        
+
         NSLog("[TPix] screen.frame=\(screenFrame), screen.visibleFrame=\(screen.visibleFrame)")
-        
-        // Capture full screen screenshot
+
         var screenCapture: NSImage? = nil
         if let cgImage = CGWindowListCreateImage(
             screenFrame,
@@ -77,8 +72,7 @@ final class CaptureOverlayController: NSWindowController {
         } else {
             NSLog("[TPix] 全屏截图失败!")
         }
-        
-        // Create view with screen capture
+
         let view = CaptureOverlayView(
             mode: mode,
             frame: screenFrame,
@@ -91,11 +85,8 @@ final class CaptureOverlayController: NSWindowController {
             }
         )
         let hostingView = NSHostingView(rootView: view)
-        // Don't flip - isFlipped affects both .position() and onContinuousHover
-        // causing double-flip issues. Use manual coordinate conversion instead.
         window?.contentView = hostingView
 
-        // Now show overlay
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
