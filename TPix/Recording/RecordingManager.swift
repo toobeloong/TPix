@@ -10,7 +10,8 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
     private var assetWriterInput: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
     private let outputQueue = DispatchQueue(label: "com.pixaura.recording.output")
-    private var startTime: CMTime?
+    private var firstFrameTime: CMTime?
+    private var sessionStarted = false
     private var isRecording = false
     private var saveURL: URL?
 
@@ -21,13 +22,18 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
         let url = makeSaveURL()
         saveURL = url
 
+        // SCStreamConfiguration: sourceRect is in logical points, width/height in physical pixels
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        let pixelWidth = Int(rect.width * scale)
+        let pixelHeight = Int(rect.height * scale)
+
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return }
         assetWriter = writer
 
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: Int(rect.width),
-            AVVideoHeightKey: Int(rect.height),
+            AVVideoWidthKey: pixelWidth,
+            AVVideoHeightKey: pixelHeight,
         ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = true
@@ -38,24 +44,26 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
             assetWriterInput: input,
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-                kCVPixelBufferWidthKey as String: Int(rect.width),
-                kCVPixelBufferHeightKey as String: Int(rect.height),
+                kCVPixelBufferWidthKey as String: pixelWidth,
+                kCVPixelBufferHeightKey as String: pixelHeight,
             ]
         )
         self.adaptor = adaptor
 
-        writer.startWriting()
-        writer.startSession(atSourceTime: .zero)
+        isRecording = true
 
         Task {
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                guard let display = content.displays.first else { return }
+                guard let display = content.displays.first else {
+                    await self.finishFailure()
+                    return
+                }
 
                 let filter = SCContentFilter(display: display, excludingWindows: [])
                 let config = SCStreamConfiguration()
-                config.width = Int(rect.width)
-                config.height = Int(rect.height)
+                config.width = pixelWidth
+                config.height = pixelHeight
                 config.sourceRect = rect
                 config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(fps))
                 config.queueDepth = 5
@@ -69,10 +77,20 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
                 try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: outputQueue)
                 self.stream = stream
                 try await stream.startCapture()
-                isRecording = true
             } catch {
                 print("录屏启动失败: \(error)")
+                await self.finishFailure()
             }
+        }
+    }
+
+    private func finishFailure() async {
+        isRecording = false
+        stream?.stopCapture { _ in }
+        assetWriterInput?.markAsFinished()
+        assetWriter?.finishWriting { [weak self] in
+            guard let url = self?.saveURL else { return }
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -81,8 +99,9 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
         isRecording = false
 
         stream?.stopCapture { [weak self] _ in
-            self?.assetWriterInput?.markAsFinished()
-            self?.assetWriter?.finishWriting { [weak self] in
+            guard let self = self else { return }
+            self.assetWriterInput?.markAsFinished()
+            self.assetWriter?.finishWriting { [weak self] in
                 guard let url = self?.saveURL else { return }
                 DispatchQueue.main.async {
                     self?.onFinish?(url)
@@ -97,12 +116,16 @@ final class RecordingManager: NSObject, SCStreamOutput, SCStreamDelegate {
               let input = assetWriterInput, input.isReadyForMoreMediaData,
               let adaptor = adaptor else { return }
 
-        if startTime == nil {
-            startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+        if !sessionStarted {
+            sessionStarted = true
+            firstFrameTime = time
+            assetWriter?.startWriting()
+            assetWriter?.startSession(atSourceTime: time)
         }
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         adaptor.append(pixelBuffer, withPresentationTime: time)
     }
 

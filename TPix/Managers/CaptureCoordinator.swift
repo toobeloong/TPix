@@ -9,6 +9,7 @@ final class CaptureCoordinator {
     private var captureController: CaptureOverlayController?
     private var recordingManager: RecordingManager?
     private var ocrController: CaptureOverlayController?
+    private var recordingIndicator: RecordingIndicatorController?
 
     private init() {}
 
@@ -36,8 +37,7 @@ final class CaptureCoordinator {
 
     func toggleRecording() {
         if recordingManager != nil {
-            recordingManager?.stop()
-            recordingManager = nil
+            stopRecording()
         } else {
             let ctrl = CaptureOverlayController(mode: .record)
             ctrl.onComplete = { [weak self] image, rect in
@@ -57,10 +57,25 @@ final class CaptureCoordinator {
         let mgr = RecordingManager()
         mgr.onFinish = { [weak self] url in
             self?.recordingManager = nil
+            self?.recordingIndicator?.close()
+            self?.recordingIndicator = nil
             self?.showRecordingResult(url: url)
         }
         mgr.start(rect: rect)
         recordingManager = mgr
+
+        let indicator = RecordingIndicatorController()
+        indicator.show { [weak self] in
+            self?.stopRecording()
+        }
+        recordingIndicator = indicator
+    }
+
+    private func stopRecording() {
+        recordingManager?.stop()
+        recordingManager = nil
+        recordingIndicator?.close()
+        recordingIndicator = nil
     }
 
     private func showRecordingResult(url: URL) {
@@ -91,13 +106,24 @@ final class CaptureCoordinator {
     }
 
     private func performOCR(on image: NSImage) {
-        OCRManager.shared.recognize(image: image) { text in
+        OCRManager.shared.recognize(image: image) { result in
             DispatchQueue.main.async {
+                if result.isEmpty {
+                    let alert = NSAlert()
+                    alert.messageText = "未识别到内容"
+                    alert.informativeText = "未在选区中识别到文字或二维码"
+                    alert.alertStyle = .informational
+                    alert.addButton(withTitle: "好")
+                    alert.runModal()
+                    return
+                }
+
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
+                NSPasteboard.general.setString(result.clipboardText, forType: .string)
+
                 let alert = NSAlert()
-                alert.messageText = "OCR 识别完成"
-                alert.informativeText = "已复制到剪贴板:\n\n\(text.prefix(500))"
+                alert.messageText = "识别完成"
+                alert.informativeText = "已复制到剪贴板:\n\n\(result.displayText.prefix(500))"
                 alert.alertStyle = .informational
                 alert.addButton(withTitle: "好")
                 alert.runModal()
