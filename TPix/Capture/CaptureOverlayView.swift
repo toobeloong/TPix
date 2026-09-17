@@ -262,7 +262,7 @@ struct CaptureOverlayView: View {
             }
 
             // Toolbar
-            if isSelectionDone {
+            if isSelectionDone && mode != .quickOcr {
                 toolbar
                     .position(x: toolbarPosition.x, y: toolbarPosition.y)
                     .zIndex(100)
@@ -438,6 +438,11 @@ struct CaptureOverlayView: View {
                                 isSelectionDone = true
                                 isDragging = false
                                 didDrag = false
+                                // 快速 OCR 模式：选区完成立即确认
+                                if mode == .quickOcr {
+                                    confirmCapture()
+                                    return
+                                }
                             }
                         } else {
                             // 单击但没有悬停窗口，不处理
@@ -487,6 +492,10 @@ struct CaptureOverlayView: View {
                             isDragging = false
                             isSelectionDone = true
                             didDrag = false
+                            if mode == .quickOcr {
+                                confirmCapture()
+                                return
+                            }
                         } else {
                             isDragging = false
                         }
@@ -1381,6 +1390,7 @@ struct CaptureOverlayView: View {
         case .area: return "拖动选择截图区域，或单击吸附窗口"
         case .record: return "拖动选择录屏区域"
         case .ocr: return "拖动选择 OCR 识别区域"
+        case .quickOcr: return "拖动选择区域，松开自动识别"
         }
     }
 
@@ -1416,16 +1426,16 @@ struct CaptureOverlayView: View {
         let finalImage: NSImage
         if isWindowCaptureMode {
             if shapes.isEmpty {
-                finalImage = image
+                finalImage = mode == .quickOcr ? image : applyWatermark(to: image)
             } else {
-                finalImage = renderAnnotations(on: image)
+                finalImage = mode == .quickOcr ? image : applyWatermark(to: renderAnnotations(on: image))
             }
         } else {
             let croppedImage = cropFromFullImage(image, rect: selectionRect)
             if shapes.isEmpty {
-                finalImage = croppedImage
+                finalImage = mode == .quickOcr ? croppedImage : applyWatermark(to: croppedImage)
             } else {
-                finalImage = renderAnnotations(on: croppedImage)
+                finalImage = mode == .quickOcr ? croppedImage : applyWatermark(to: renderAnnotations(on: croppedImage))
             }
         }
 
@@ -1438,10 +1448,10 @@ struct CaptureOverlayView: View {
         guard let image = fullImage else { return nil }
 
         if isWindowCaptureMode {
-            return shapes.isEmpty ? image : renderAnnotations(on: image)
+            return applyWatermark(to: shapes.isEmpty ? image : renderAnnotations(on: image))
         } else {
             let croppedImage = cropFromFullImage(image, rect: selectionRect)
-            return shapes.isEmpty ? croppedImage : renderAnnotations(on: croppedImage)
+            return applyWatermark(to: shapes.isEmpty ? croppedImage : renderAnnotations(on: croppedImage))
         }
     }
 
@@ -1521,6 +1531,71 @@ struct CaptureOverlayView: View {
         }
 
         cgCtx.restoreGState()
+        result.unlockFocus()
+        return result
+    }
+
+    private func applyWatermark(to image: NSImage) -> NSImage {
+        let s = SettingsStore.shared.settings
+        guard s.watermarkEnabled, !s.watermarkText.isEmpty else { return image }
+
+        let size = image.size
+        let result = NSImage(size: size)
+        result.lockFocus()
+
+        image.draw(in: NSRect(origin: .zero, size: size))
+
+        let font = NSFont.systemFont(ofSize: CGFloat(s.watermarkFontSize))
+        let color = NSColor(Color(hex: s.watermarkColor)).withAlphaComponent(s.watermarkOpacity)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+        ]
+        let textSize = (s.watermarkText as NSString).size(withAttributes: attrs)
+
+        if s.watermarkType == 1 {
+            // 平铺模式
+            let rotation = CGFloat(s.watermarkRotation)
+            let stepX = textSize.width + CGFloat(s.watermarkSpacing)
+            let stepY = textSize.height + CGFloat(s.watermarkVSpacing)
+            let diag = sqrt(size.width * size.width + size.height * size.height)
+            let cols = Int(diag / stepX) + 2
+            let rows = Int(diag / stepY) + 2
+
+            let ctx = NSGraphicsContext.current!.cgContext
+            ctx.saveGState()
+            // 以图片中心为原点旋转
+            ctx.translateBy(x: size.width / 2, y: size.height / 2)
+            ctx.rotate(by: rotation * .pi / 180)
+            ctx.translateBy(x: -size.width / 2, y: -size.height / 2)
+
+            let nsText = s.watermarkText as NSString
+            for row in -1...rows {
+                for col in -1...cols {
+                    let x = CGFloat(col) * stepX
+                    let y = CGFloat(row) * stepY
+                    let drawRect = NSRect(x: x, y: y, width: textSize.width, height: textSize.height)
+                    nsText.draw(in: drawRect, withAttributes: attrs)
+                }
+            }
+            ctx.restoreGState()
+        } else {
+            // 角标模式
+            let margin: CGFloat = 12
+            let origin: CGPoint
+            switch s.watermarkPosition {
+            case 0:  // topLeft
+                origin = CGPoint(x: margin, y: size.height - textSize.height - margin)
+            case 1:  // topRight
+                origin = CGPoint(x: size.width - textSize.width - margin, y: size.height - textSize.height - margin)
+            case 2:  // bottomLeft
+                origin = CGPoint(x: margin, y: margin)
+            default:  // bottomRight
+                origin = CGPoint(x: size.width - textSize.width - margin, y: margin)
+            }
+            (s.watermarkText as NSString).draw(at: origin, withAttributes: attrs)
+        }
+
         result.unlockFocus()
         return result
     }

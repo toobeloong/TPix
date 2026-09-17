@@ -5,6 +5,7 @@ enum CaptureMode {
     case area
     case record
     case ocr
+    case quickOcr
 }
 
 class CaptureOverlayWindow: NSWindow {
@@ -21,6 +22,7 @@ final class CaptureOverlayController: NSWindowController {
     private var escLocalMonitor: Any?
     private var escGlobalMonitor: Any?
     private var isClosed = false
+    private var previousApp: NSRunningApplication?
 
     init(mode: CaptureMode) {
         self.mode = mode
@@ -54,6 +56,9 @@ final class CaptureOverlayController: NSWindowController {
 
     func show() {
         NSLog("[TPix] CaptureOverlayController.show() 开始")
+
+        // 记录当前活跃的 app，完成后恢复焦点
+        previousApp = NSWorkspace.shared.frontmostApplication
 
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.frame
@@ -138,5 +143,10 @@ final class CaptureOverlayController: NSWindowController {
             escGlobalMonitor = nil
         }
         window?.close()
+        // 截图/OCR 完成后将焦点还给之前活跃的 app
+        if let app = previousApp, app != NSRunningApplication.current {
+            app.activate(options: [])
+        }
+        NSApp.deactivate()
     }
 }

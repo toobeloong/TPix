@@ -34,9 +34,7 @@ final class ScreenPermissionChecker {
         permissionGranted = granted
         
         if !granted {
-            DispatchQueue.main.async {
-                self.showPermissionAlert()
-            }
+            self.showPermissionAlert()
         }
         return granted
     }

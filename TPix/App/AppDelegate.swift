@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import ScreenCaptureKit
+import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
@@ -11,6 +12,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         captureCoordinator = CaptureCoordinator.shared
+
+        // 同步开机自启状态
+        let loginEnabled = SMAppService.mainApp.status == .enabled
+        if SettingsStore.shared.settings.launchAtLogin != loginEnabled {
+            SettingsStore.shared.settings.launchAtLogin = loginEnabled
+            SettingsStore.shared.save()
+        }
 
         Task { @MainActor in
             _ = ScreenPermissionChecker.shared.check()
@@ -51,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "区域截图", action: #selector(startAreaCapture), keyEquivalent: "")
         menu.addItem(withTitle: "录屏", action: #selector(toggleRecording), keyEquivalent: "")
         menu.addItem(withTitle: "OCR", action: #selector(startOCR), keyEquivalent: "")
+        menu.addItem(withTitle: "快速 OCR", action: #selector(startQuickOCR), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -69,8 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func startAreaCapture() { CaptureCoordinator.shared.startAreaCapture() }
     @objc private func toggleRecording() { CaptureCoordinator.shared.toggleRecording() }
     @objc private func startOCR() { CaptureCoordinator.shared.startOCR() }
+    @objc private func startQuickOCR() { CaptureCoordinator.shared.startQuickOCR() }
     @objc private func openSettings() {
-        NSApp.setActivationPolicy(.regular)
         SettingsWindowController.shared.show()
     }
     @objc private func quitApp() { NSApp.terminate(nil) }
@@ -84,6 +93,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.title = "录屏  \(s.recordHotkey.displayString)"
             } else if item.action == #selector(startOCR) {
                 item.title = "OCR  \(s.ocrHotkey.displayString)"
+            } else if item.action == #selector(startQuickOCR) {
+                item.title = "快速 OCR  \(s.quickOcrHotkey.displayString)"
             }
         }
     }

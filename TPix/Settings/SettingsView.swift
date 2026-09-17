@@ -1,5 +1,6 @@
 import SwiftUI
 import Carbon.HIToolbox
+import ServiceManagement
 
 struct SettingsView: View {
     @StateObject private var store = SettingsStore.shared
@@ -11,6 +12,8 @@ struct SettingsView: View {
         case hotkeys = "快捷键"
         case capture = "截图"
         case recording = "录屏"
+        case ocr = "OCR"
+        case watermark = "水印"
         
         var icon: String {
             switch self {
@@ -18,6 +21,8 @@ struct SettingsView: View {
             case .hotkeys: return "keyboard.fill"
             case .capture: return "camera.fill"
             case .recording: return "record.circle.fill"
+            case .ocr: return "doc.text.fill"
+            case .watermark: return "drop.fill"
             }
         }
     }
@@ -59,6 +64,10 @@ struct SettingsView: View {
                         captureContent
                     case .recording:
                         recordingContent
+                    case .ocr:
+                        ocrContent
+                    case .watermark:
+                        watermarkContent
                     }
                     Spacer(minLength: 0)
                 }
@@ -78,6 +87,14 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             SectionHeader(title: "启动选项", icon: "power")
             ModernCard {
+                ModernToggle(
+                    title: "开机自动启动",
+                    subtitle: "登录时自动启动 TPix",
+                    isOn: $store.settings.launchAtLogin
+                )
+                .onChange(of: store.settings.launchAtLogin) { _, newValue in
+                    toggleLaunchAtLogin(enabled: newValue)
+                }
                 ModernToggle(
                     title: "启动时显示截图",
                     subtitle: "应用启动后自动进入截图模式",
@@ -147,8 +164,12 @@ struct SettingsView: View {
 
     private var hotkeysContent: some View {
         VStack(alignment: .leading, spacing: 20) {
+            SectionHeader(title: "快捷键设置", icon: "command")
+            
             HStack {
-                SectionHeader(title: "快捷键设置", icon: "command")
+                Text("点击右侧按钮录制新的快捷键组合，按 Esc 取消录制")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 13))
                 Spacer()
                 Button(action: resetHotkeys) {
                     HStack(spacing: 6) {
@@ -167,10 +188,6 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
-            
-            Text("点击右侧按钮录制新的快捷键组合，按 Esc 取消录制")
-                .foregroundColor(.secondary)
-                .font(.system(size: 13))
             
             if let msg = conflictMessage {
                 HStack(spacing: 8) {
@@ -274,15 +291,279 @@ struct SettingsView: View {
         }
         .onChange(of: store.settings) { _, _ in store.save() }
     }
-    
+
+    private var ocrContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            SectionHeader(title: "识别设置", icon: "doc.text.fill")
+            ModernCard {
+                ModernToggle(
+                    title: "自动整理纯文本",
+                    subtitle: "合并断行、去除多余空行和首尾空白，输出更干净的文本",
+                    isOn: $store.settings.ocrFormatText
+                )
+                ModernToggle(
+                    title: "输出结构化 HTML",
+                    subtitle: "根据文字大小推断标题/段落，采样文字颜色，生成带样式的 HTML 源码复制到剪贴板",
+                    isOn: $store.settings.ocrOutputHTML
+                )
+            }
+        }
+        .onChange(of: store.settings) { _, _ in store.save() }
+    }
+
+    private var watermarkContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            SectionHeader(title: "水印设置", icon: "drop.fill")
+            ModernCard {
+                ModernToggle(
+                    title: "启用水印",
+                    subtitle: "截图时在图片上添加水印",
+                    isOn: $store.settings.watermarkEnabled
+                )
+
+                if store.settings.watermarkEnabled {
+                    Divider().padding(.vertical, 8)
+
+                    HStack {
+                        Text("水印文字")
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        TextField("输入水印文字", text: $store.settings.watermarkText)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.gray.opacity(0.1))
+                            )
+                            .frame(width: 220)
+                    }
+
+                    Divider().padding(.vertical, 8)
+
+                    HStack {
+                        Text("类型")
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        ForEach(WatermarkType.allCases, id: \.self) { type in
+                            Button(action: { store.settings.watermarkType = type.rawValue }) {
+                                Text(type.label)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(store.settings.watermarkType == type.rawValue ? .white : .primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(store.settings.watermarkType == type.rawValue ? Color.accentColor : Color.gray.opacity(0.1))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Divider().padding(.vertical, 8)
+
+                    HStack {
+                        Text("字号")
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        Stepper("", value: $store.settings.watermarkFontSize, in: 8...48, step: 1)
+                            .labelsHidden()
+                            .tint(.accentColor)
+                        Text("\(store.settings.watermarkFontSize)")
+                            .font(.system(size: 16, weight: .semibold))
+                            .monospacedDigit()
+                            .frame(width: 60, alignment: .trailing)
+                    }
+
+                    Divider().padding(.vertical, 8)
+
+                    HStack {
+                        Text("透明度")
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        Slider(value: $store.settings.watermarkOpacity, in: 0.1...1.0, step: 0.1)
+                            .frame(width: 160)
+                        Text("\(Int(store.settings.watermarkOpacity * 100))%")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 50, alignment: .trailing)
+                    }
+
+                    Divider().padding(.vertical, 8)
+
+                    HStack {
+                        Text("颜色")
+                            .foregroundColor(.primary)
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        ForEach(["#FFFFFF", "#000000", "#FF0000", "#FF8800", "#00AA00", "#0066FF", "#8800FF"], id: \.self) { hex in
+                            Circle()
+                                .fill(Color(hex: hex))
+                                .frame(width: 22, height: 22)
+                                .overlay(
+                                    Circle()
+                                        .stroke(store.settings.watermarkColor == hex ? Color.accentColor : Color.gray.opacity(0.3),
+                                                lineWidth: store.settings.watermarkColor == hex ? 3 : 1)
+                                        .frame(width: 26, height: 26)
+                                )
+                                .onTapGesture { store.settings.watermarkColor = hex }
+                        }
+                    }
+
+                    // 角标模式：显示位置选择
+                    if store.settings.watermarkType == 0 {
+                        Divider().padding(.vertical, 8)
+
+                        HStack {
+                            Text("位置")
+                                .foregroundColor(.primary)
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
+                            ForEach(WatermarkPosition.allCases, id: \.self) { pos in
+                                Button(action: { store.settings.watermarkPosition = pos.rawValue }) {
+                                    Image(systemName: pos.icon)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(store.settings.watermarkPosition == pos.rawValue ? .white : .primary)
+                                        .frame(width: 32, height: 28)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(store.settings.watermarkPosition == pos.rawValue ? Color.accentColor : Color.gray.opacity(0.1))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    // 平铺模式：显示旋转角度和间隔
+                    if store.settings.watermarkType == 1 {
+                        Divider().padding(.vertical, 8)
+
+                        HStack {
+                            Text("旋转角度")
+                                .foregroundColor(.primary)
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
+                            Slider(value: Binding(
+                                get: { Double(store.settings.watermarkRotation) },
+                                set: { store.settings.watermarkRotation = Int($0) }
+                            ), in: -90...90, step: 5)
+                            .frame(width: 160)
+                            Text("\(store.settings.watermarkRotation)°")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+
+                        Divider().padding(.vertical, 8)
+
+                        HStack {
+                            Text("水平间隔")
+                                .foregroundColor(.primary)
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
+                            Slider(value: Binding(
+                                get: { Double(store.settings.watermarkSpacing) },
+                                set: { store.settings.watermarkSpacing = Int($0) }
+                            ), in: 20...400, step: 10)
+                            .frame(width: 160)
+                            Text("\(store.settings.watermarkSpacing)")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+
+                        Divider().padding(.vertical, 8)
+
+                        HStack {
+                            Text("垂直间隔")
+                                .foregroundColor(.primary)
+                                .frame(width: 80, alignment: .leading)
+                            Spacer()
+                            Slider(value: Binding(
+                                get: { Double(store.settings.watermarkVSpacing) },
+                                set: { store.settings.watermarkVSpacing = Int($0) }
+                            ), in: 20...400, step: 10)
+                            .frame(width: 160)
+                            Text("\(store.settings.watermarkVSpacing)")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: store.settings) { _, _ in store.save() }
+    }
+
+    enum WatermarkType: Int, CaseIterable {
+        case corner = 0, tile = 1
+
+        var label: String {
+            switch self {
+            case .corner: return "角标"
+            case .tile: return "平铺"
+            }
+        }
+    }
+
+    enum WatermarkPosition: Int, CaseIterable {
+        case topLeft = 0, topRight = 1, bottomLeft = 2, bottomRight = 3
+
+        var icon: String {
+            switch self {
+            case .topLeft: return "arrow.up.left"
+            case .topRight: return "arrow.up.right"
+            case .bottomLeft: return "arrow.down.left"
+            case .bottomRight: return "arrow.down.right"
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .topLeft: return "左上"
+            case .topRight: return "右上"
+            case .bottomLeft: return "左下"
+            case .bottomRight: return "右下"
+            }
+        }
+    }
+
     private var hotkeyItems: [(title: String, combo: Binding<HotkeyCombo>)] {
         [
             ("区域截图", $store.settings.areaCaptureHotkey),
             ("录屏", $store.settings.recordHotkey),
-            ("OCR", $store.settings.ocrHotkey)
+            ("OCR", $store.settings.ocrHotkey),
+            ("快速 OCR", $store.settings.quickOcrHotkey)
         ]
     }
-    
+
+    private func toggleLaunchAtLogin(enabled: Bool) {
+        if enabled {
+            do {
+                try SMAppService.mainApp.register()
+                NSLog("[TPix] LaunchAtLogin: registered")
+            } catch {
+                NSLog("[TPix] LaunchAtLogin: register failed: \(error)")
+                store.settings.launchAtLogin = false
+            }
+        } else {
+            do {
+                try SMAppService.mainApp.unregister()
+                NSLog("[TPix] LaunchAtLogin: unregistered")
+            } catch {
+                NSLog("[TPix] LaunchAtLogin: unregister failed: \(error)")
+            }
+        }
+        store.save()
+    }
+
     private func chooseSaveFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -301,6 +582,7 @@ struct SettingsView: View {
         store.settings.areaCaptureHotkey = .none
         store.settings.recordHotkey = .none
         store.settings.ocrHotkey = .none
+        store.settings.quickOcrHotkey = .none
         store.save()
         HotkeyManager.shared.unregisterAll()
         HotkeyManager.shared.registerAll()

@@ -72,7 +72,7 @@ enum KeyFormatter {
 }
 
 enum HotkeyID: Int {
-    case areaCapture = 1, recordScreen, ocr
+    case areaCapture = 1, recordScreen, ocr, quickOcr
 }
 
 final class HotkeyManager {
@@ -89,6 +89,7 @@ final class HotkeyManager {
         register(.areaCapture, combo: s.settings.areaCaptureHotkey) { CaptureCoordinator.shared.startAreaCapture() }
         register(.recordScreen, combo: s.settings.recordHotkey) { CaptureCoordinator.shared.toggleRecording() }
         register(.ocr, combo: s.settings.ocrHotkey) { CaptureCoordinator.shared.startOCR() }
+        register(.quickOcr, combo: s.settings.quickOcrHotkey) { CaptureCoordinator.shared.startQuickOCR() }
     }
 
     func register(_ id: HotkeyID, combo: HotkeyCombo, handler: @escaping () -> Void) {
