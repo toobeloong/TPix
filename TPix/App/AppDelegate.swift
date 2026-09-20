@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "录屏", action: #selector(toggleRecording), keyEquivalent: "")
         menu.addItem(withTitle: "OCR", action: #selector(startOCR), keyEquivalent: "")
         menu.addItem(withTitle: "快速 OCR", action: #selector(startQuickOCR), keyEquivalent: "")
+        menu.addItem(withTitle: "文件文字提取…", action: #selector(startFileOCR), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -79,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleRecording() { CaptureCoordinator.shared.toggleRecording() }
     @objc private func startOCR() { CaptureCoordinator.shared.startOCR() }
     @objc private func startQuickOCR() { CaptureCoordinator.shared.startQuickOCR() }
+    @objc private func startFileOCR() { CaptureCoordinator.shared.startFileOCR() }
     @objc private func openSettings() {
         SettingsWindowController.shared.show()
     }

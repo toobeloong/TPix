@@ -51,10 +51,101 @@ private struct TextBlock {
 final class OCRManager {
     static let shared = OCRManager()
 
-    func recognize(image: NSImage, completion: @escaping (OCRResult) -> Void) {
+    /// 判断归一化 Y 坐标（top, from top, 0~1）是否落在"图片背景"区域
+    /// 返回 true 表示该位置是复杂背景（图片），文字应被替换为 [image]
+    private func isImageBackground(top: CGFloat, imageHeight: Int, imageWidth: Int, cgImage: CGImage) -> Bool {
+        // 将图片按水平条带分割，每 50 像素逻辑高度一条
+        let bandHeight = 50.0
+        let totalBands = max(1, Int(CGFloat(imageHeight) / bandHeight))
+        // top 是归一化的 from-top 坐标，转换为像素
+        let pixelY = top * CGFloat(imageHeight)
+        let bandIndex = Int(pixelY / bandHeight)
+        guard bandIndex >= 0 && bandIndex < totalBands else { return false }
+
+        // 检测该条带是否为复杂背景
+        let bandTop = Int(CGFloat(bandIndex) * bandHeight)
+        let bandBottom = min(Int(CGFloat(bandIndex + 1) * bandHeight), imageHeight)
+        return isComplexBackgroundBand(cgImage: cgImage, top: bandTop, bottom: bandBottom)
+    }
+
+    /// 检测图片某个水平条带是否为复杂背景（非纯色）
+    /// 采样条带内的像素，计算颜色方差；方差大则判定为图片背景
+    private func isComplexBackgroundBand(cgImage: CGImage, top: Int, bottom: Int) -> Bool {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard top >= 0, bottom <= height, top < bottom else { return false }
+
+        guard let provider = cgImage.dataProvider,
+              let data = provider.data,
+              let ptr = CFDataGetBytePtr(data) else { return false }
+
+        let bytesPerPixel = cgImage.bitsPerPixel / 8
+        let bytesPerRow = cgImage.bytesPerRow
+        let bitmapInfo = cgImage.bitmapInfo
+        let isBigEndian = bitmapInfo.rawValue & CGBitmapInfo.byteOrder32Big.rawValue != 0
+
+        // 采样条带内每隔 4 个像素取一个点，避免性能问题
+        let step = 4
+        var sumR: Double = 0, sumG: Double = 0, sumB: Double = 0
+        var sumR2: Double = 0, sumG2: Double = 0, sumB2: Double = 0
+        var count: Double = 0
+
+        for y in stride(from: top, to: bottom, by: step) {
+            for x in stride(from: 0, to: width, by: step) {
+                let offset = y * bytesPerRow + x * bytesPerPixel
+                let r: Double, g: Double, b: Double
+                if isBigEndian {
+                    r = Double(ptr[offset]); g = Double(ptr[offset + 1]); b = Double(ptr[offset + 2])
+                } else {
+                    r = Double(ptr[offset + 2]); g = Double(ptr[offset + 1]); b = Double(ptr[offset])
+                }
+                sumR += r; sumG += g; sumB += b
+                sumR2 += r * r; sumG2 += g * g; sumB2 += b * b
+                count += 1
+            }
+        }
+
+        guard count > 10 else { return false }
+
+        // 计算 RGB 各通道的方差
+        let meanR = sumR / count
+        let meanG = sumG / count
+        let meanB = sumB / count
+        let varR = sumR2 / count - meanR * meanR
+        let varG = sumG2 / count - meanG * meanG
+        let varB = sumB2 / count - meanB * meanB
+        let totalVariance = (varR + varG + varB) / 3.0
+
+        // 阈值：方差 > 800 视为复杂背景（约对应标准差 > 28，较严格）
+        return totalVariance > 800.0
+    }
+
+    func recognize(image: NSImage, isFileOCR: Bool = false, completion: @escaping (OCRResult) -> Void) {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             completion(OCRResult())
             return
+        }
+
+        // 透明背景填充白色，否则 Vision OCR 识别率极低
+        let opaqueImage = flattenTransparentBackground(cgImage) ?? cgImage
+
+        // 对低分辨率图片进行放大，提高识别率；限制最大高度避免极端长图
+        let minDimension = 1000
+        let maxDimension = 8000
+        var processedImage = opaqueImage
+        let w = opaqueImage.width
+        let h = opaqueImage.height
+        if w < minDimension || h < minDimension {
+            let scale = max(CGFloat(minDimension) / CGFloat(w), CGFloat(minDimension) / CGFloat(h))
+            let newWidth = Int(CGFloat(w) * scale)
+            let newHeight = min(Int(CGFloat(h) * scale), maxDimension)
+            processedImage = upscaleCGImage(opaqueImage, width: newWidth, height: newHeight) ?? opaqueImage
+        } else if h > maxDimension {
+            // 超长图：等比缩小到最大高度
+            let scale = CGFloat(maxDimension) / CGFloat(h)
+            let newWidth = Int(CGFloat(w) * scale)
+            let newHeight = maxDimension
+            processedImage = upscaleCGImage(opaqueImage, width: newWidth, height: newHeight) ?? opaqueImage
         }
 
         let formatText = SettingsStore.shared.settings.ocrFormatText
@@ -69,23 +160,34 @@ final class OCRManager {
             // 构建文字块（含几何信息）
             let blocks = observations.compactMap { obs -> TextBlock? in
                 guard let candidate = obs.topCandidates(1).first else { return nil }
+                // 文件 OCR：过滤过短的文本块（logo/装饰文字）
+                if isFileOCR {
+                    let trimmed = candidate.string.trimmingCharacters(in: .whitespaces)
+                    guard trimmed.count >= 2 else { return nil }
+                }
                 let bbox = obs.boundingBox
                 let height = bbox.height
                 // 物理像素高度 / 缩放比 = 逻辑像素高度
                 // bbox 包含行间距，实际字号约为 bbox 高度的 0.75
-                let pxHeight = height * CGFloat(cgImage.height) / CGFloat(scaleFactor)
+                let pxHeight = height * CGFloat(processedImage.height) / CGFloat(scaleFactor)
                 let fontSize = max(10, Int(pxHeight * 0.75))
-                let color = OCRManager.sampleColor(in: bbox, from: cgImage)
+                let color = OCRManager.sampleColor(in: bbox, from: processedImage)
                 // 转换为 HTML 坐标系：left/top/width (归一化, top from top)
                 let left = bbox.minX
                 let top = 1.0 - bbox.maxY
                 let width = bbox.width
-                return TextBlock(text: candidate.string, bbox: bbox, height: height, fontSize: fontSize, color: color, left: left, top: top, width: width)
+                // 文件 OCR：判断该文字块是否落在复杂背景（图片）区域，用 [image] 代替
+                var finalText = candidate.string
+                if isFileOCR {
+                    let isImageBg = self.isImageBackground(top: top, imageHeight: processedImage.height, imageWidth: processedImage.width, cgImage: processedImage)
+                    if isImageBg { finalText = "[image]" }
+                }
+                return TextBlock(text: finalText, bbox: bbox, height: height, fontSize: fontSize, color: color, left: left, top: top, width: width)
             }
 
             let rawText = blocks.map { $0.text }.joined(separator: "\n")
             let text = formatText ? OCRManager.formatPlainText(rawText) : rawText
-            let html = outputHTML ? OCRManager.buildHTML(blocks: blocks, imageWidth: cgImage.width, imageHeight: cgImage.height) : ""
+            let html = outputHTML ? OCRManager.buildHTML(blocks: blocks, imageWidth: processedImage.width, imageHeight: processedImage.height) : ""
 
             let barcodeRequest = VNDetectBarcodesRequest { req, _ in
                 let observations = req.results as? [VNBarcodeObservation] ?? []
@@ -101,18 +203,66 @@ final class OCRManager {
             }
 
             DispatchQueue.global(qos: .userInitiated).async {
-                let handler = VNImageRequestHandler(cgImage: cgImage)
+                let handler = VNImageRequestHandler(cgImage: processedImage)
                 try? handler.perform([barcodeRequest])
             }
         }
         textRequest.recognitionLevel = .accurate
-        textRequest.recognitionLanguages = ["zh-Hans", "en-US"]
+        textRequest.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
         textRequest.usesLanguageCorrection = true
+        textRequest.automaticallyDetectsLanguage = true
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let handler = VNImageRequestHandler(cgImage: cgImage)
+            let handler = VNImageRequestHandler(cgImage: processedImage)
             try? handler.perform([textRequest])
         }
+    }
+
+    /// 透明背景填充白色
+    private func flattenTransparentBackground(_ image: CGImage) -> CGImage? {
+        // 检测是否有 alpha 通道
+        let alphaInfo = image.alphaInfo
+        if alphaInfo == .none || alphaInfo == .noneSkipFirst || alphaInfo == .noneSkipLast {
+            return nil // 已经不透明，无需处理
+        }
+
+        let width = image.width
+        let height = image.height
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        // 填充白色背景
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        // 绘制原图（透明部分会露出白色背景）
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    /// 放大低分辨率图片以提高 OCR 识别率
+    private func upscaleCGImage(_ image: CGImage, width: Int, height: Int) -> CGImage? {
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
 
     /// 从原图中采样文字区域，通过亮度直方图分离前景（文字）和背景颜色

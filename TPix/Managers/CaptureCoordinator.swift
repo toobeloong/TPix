@@ -148,6 +148,24 @@ final class CaptureCoordinator {
         captureController = ctrl
     }
 
+    func startFileOCR() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .bmp, .gif, .image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.title = "选择图片文件"
+        panel.message = "选择一张包含文字的图片进行识别"
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            guard let image = NSImage(contentsOf: url) else {
+                self?.showToast(message: "无法加载图片", success: false)
+                return
+            }
+            self?.performFileOCR(on: image)
+        }
+    }
+
     private func performQuickOCR(on image: NSImage) {
         OCRManager.shared.recognize(image: image) { result in
             DispatchQueue.main.async {
@@ -159,6 +177,62 @@ final class CaptureCoordinator {
                 NSPasteboard.general.setString(result.clipboardText, forType: .string)
                 self.showToast(message: "已复制到剪贴板", success: true)
             }
+        }
+    }
+
+    private func performFileOCR(on image: NSImage) {
+        OCRManager.shared.recognize(image: image, isFileOCR: true) { result in
+            DispatchQueue.main.async {
+                if result.isEmpty {
+                    self.showToast(message: "未识别到内容", success: false)
+                    return
+                }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(result.clipboardText, forType: .string)
+                self.showOCRResultWindow(result: result)
+            }
+        }
+    }
+
+    private func showOCRResultWindow(result: OCRResult) {
+        if let alert = ocrResultAlert {
+            alert.window.close()
+            ocrResultAlert = nil
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "识别结果"
+        alert.informativeText = result.displayText
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "复制全部")
+        alert.addButton(withTitle: "关闭")
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 460, height: 300))
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.font = .systemFont(ofSize: 14)
+        textView.string = result.displayText
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 460, height: 300))
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = false
+        scrollView.drawsBackground = false
+
+        alert.accessoryView = scrollView
+
+        ocrResultAlert = alert
+
+        DispatchQueue.main.async { [weak self] in
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let textToCopy = result.clipboardText
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(textToCopy, forType: .string)
+                self?.showToast(message: "已复制到剪贴板", success: true)
+            }
+            self?.ocrResultAlert = nil
         }
     }
 
