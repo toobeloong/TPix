@@ -25,6 +25,8 @@
 		CCAB579313E3484ED3491FCB /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE0F74C8F5FC32DC12DDCF3 /* SettingsStore.swift */; };
 		E66F2604154765FB8B0DB7E9 /* p-favicon.png in Resources */ = {isa = PBXBuildFile; fileRef = 85F4070B5491D2476F55F8B0 /* p-favicon.png */; };
 		E700949AE7A3C88B3EA79271 /* CaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E89CE85B274EDBC48DFE3D50 /* CaptureCoordinator.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* ImageCutter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978879605142 /* ImageCutter.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F3 /* AppKitSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978879605143 /* AppKitSelectionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +50,8 @@
 		E89CE85B274EDBC48DFE3D50 /* CaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoordinator.swift; sourceTree = "<group>"; };
 		F476A5796619D6B8E321D208 /* ScreenPermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenPermissionChecker.swift; sourceTree = "<group>"; };
 		F55B27EBD1424179D229EEBD /* TPixApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPixApp.swift; sourceTree = "<group>"; };
+		F1E2D3C4B5A6978879605142 /* ImageCutter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCutter.swift; sourceTree = "<group>"; };
+		F1E2D3C4B5A6978879605143 /* AppKitSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppKitSelectionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -161,6 +165,8 @@
 			children = (
 				E501C717D524F6E64E13CAE1 /* CaptureOverlayController.swift */,
 				509BB02E31167F3269E9387B /* CaptureOverlayView.swift */,
+				F1E2D3C4B5A6978879605142 /* ImageCutter.swift */,
+				F1E2D3C4B5A6978879605143 /* AppKitSelectionView.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -242,6 +248,8 @@
 				E700949AE7A3C88B3EA79271 /* CaptureCoordinator.swift in Sources */,
 				11A6774A8E2F8120F1FF63A6 /* CaptureOverlayController.swift in Sources */,
 				76E306FC487B4DD2C10C3FC9 /* CaptureOverlayView.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* ImageCutter.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F3 /* AppKitSelectionView.swift in Sources */,
 				AF6AA64F2CB3A845E16CAD49 /* HotkeyManager.swift in Sources */,
 				73AAFF0B2CBB287F7CD0EF16 /* ImageSaver.swift in Sources */,
 				60E3EA398E3304341B287A02 /* OCRManager.swift in Sources */,

@@ -78,24 +78,22 @@ final class CaptureOverlayController: NSWindowController {
             NSLog("[TPix] 全屏截图失败!")
         }
 
-        let view = CaptureOverlayView(
-            mode: mode,
+        let selectionView = AppKitSelectionView(
             frame: screenFrame,
-            screenCapture: screenCapture,
-            onComplete: { [weak self] image, rect in
-                self?.completeCapture(image: image, rect: rect)
+            screenImage: screenCapture,
+            onComplete: { [weak self] rect in
+                self?.handleSelection(rect, screenCapture: screenCapture)
             },
             onCancel: { [weak self] in
                 self?.cancelCapture()
             }
         )
-        let hostingView = NSHostingView(rootView: view)
-        window?.contentView = hostingView
+        window?.contentView = selectionView
 
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
-        window?.makeFirstResponder(hostingView)
+        window?.makeFirstResponder(selectionView)
         NSApp.activate(ignoringOtherApps: true)
 
         let cancel: () -> Void = { [weak self] in
@@ -117,6 +115,48 @@ final class CaptureOverlayController: NSWindowController {
         }
 
         NSLog("[TPix] 窗口已 orderFront, isVisible=\(window?.isVisible ?? false)")
+    }
+
+    /// 选区完成后的分发：area 进入标注，其余模式直接产出结果。
+    private func handleSelection(_ rect: NSRect, screenCapture: NSImage?) {
+        switch mode {
+        case .record:
+            completeCapture(image: nil, rect: rect)
+        case .ocr, .quickOcr:
+            guard let image = screenCapture else {
+                NSLog("[TPix] 全屏截图缺失，无法识别")
+                completeCapture(image: nil, rect: rect)
+                return
+            }
+            let cropped = ImageCutter.crop(image, rect: rect)
+            completeCapture(image: cropped, rect: rect)
+        case .area:
+            enterAnnotationMode(rect: rect, screenCapture: screenCapture)
+        }
+    }
+
+    /// area 模式：选区完成后切换为 SwiftUI 标注界面（预置选区）。
+    private func enterAnnotationMode(rect: NSRect, screenCapture: NSImage?) {
+        guard let win = window else { return }
+        let screenFrame = win.frame
+
+        let view = CaptureOverlayView(
+            mode: .area,
+            frame: screenFrame,
+            screenCapture: screenCapture,
+            initialSelectionRect: rect,
+            onComplete: { [weak self] image, r in
+                self?.completeCapture(image: image, rect: r ?? rect)
+            },
+            onCancel: { [weak self] in
+                self?.cancelCapture()
+            }
+        )
+        let hostingView = NSHostingView(rootView: view)
+        win.contentView = hostingView
+        win.makeKeyAndOrderFront(nil)
+        win.makeFirstResponder(hostingView)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func cancelCapture() {
@@ -147,6 +187,5 @@ final class CaptureOverlayController: NSWindowController {
         if let app = previousApp, app != NSRunningApplication.current {
             app.activate(options: [])
         }
-        NSApp.deactivate()
     }
 }

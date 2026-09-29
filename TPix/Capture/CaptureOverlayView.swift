@@ -8,6 +8,22 @@ struct CaptureOverlayView: View {
     let screenCapture: NSImage?
     let onComplete: (NSImage?, NSRect?) -> Void
     let onCancel: () -> Void
+    /// 预置选区：非 nil 时直接进入标注模式（跳过选区阶段）
+    var initialSelectionRect: NSRect? = nil
+
+    init(mode: CaptureMode, frame: NSRect, screenCapture: NSImage?,
+         initialSelectionRect: NSRect? = nil,
+         onComplete: @escaping (NSImage?, NSRect?) -> Void,
+         onCancel: @escaping () -> Void) {
+        self.mode = mode
+        self.frame = frame
+        self.screenCapture = screenCapture
+        self.initialSelectionRect = initialSelectionRect
+        self.onComplete = onComplete
+        self.onCancel = onCancel
+        _isSelectionDone = State(initialValue: initialSelectionRect != nil)
+        _selectionRect = State(initialValue: initialSelectionRect ?? .zero)
+    }
 
     // Window capture image (set after window capture, used as background for editing)
     @State private var capturedWindowImage: NSImage? = nil

@@ -26,7 +26,9 @@ final class CaptureCoordinator {
         guard checkPermission() else { return }
         let ctrl = CaptureOverlayController(mode: .area)
         ctrl.onComplete = { [weak self] image, rect in
-            self?.handleCaptureResult(image: image, rect: rect)
+            guard let self = self else { return }
+            self.handleCaptureResult(image: image, rect: rect)
+            self.captureController = nil
         }
         ctrl.onCancel = { [weak self] in
             self?.captureController = nil
